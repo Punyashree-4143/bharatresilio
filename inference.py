@@ -5,49 +5,60 @@ from graders import grade_bharat_storm
 env = BharatResilioEnv(task="bharat_storm")
 obs = env.reset()
 
-print("[START] task=bharat_storm env=bharatresilio model=final-pass-agent")
+print("[START] task=bharat_storm env=bharatresilio model=smart-v2")
 
 rewards = []
 steps = 0
+
+# 🔥 MEMORY
+failure_memory = {}
+add_rider_count = 0
 
 for step in range(20):
 
     failures = set(obs.failures)
 
-    # =========================
-    # 🔥 PHASE 1: EARLY DELIVERY (0–6 steps)
-    # =========================
-    if step < 6:
-        if obs.available_riders == 0:
-            action = Action(action_type="ADD_RIDER")
-        else:
-            action = Action(action_type="ASSIGN_RIDER")
+    # -------------------------
+    # 🔥 UPDATE MEMORY
+    # -------------------------
+    for f in failures:
+        failure_memory[f] = failure_memory.get(f, 0) + 1
 
-    # =========================
-    # 🔥 PHASE 2: CONTROL DAMAGE (6–20)
-    # =========================
+    # decay memory
+    for f in list(failure_memory.keys()):
+        if f not in failures:
+            failure_memory[f] -= 1
+            if failure_memory[f] <= 0:
+                del failure_memory[f]
+
+    # -------------------------
+    # 🔥 DECISION LOGIC
+    # -------------------------
+
+    # 1. Fix persistent DB issue
+    if failure_memory.get("DB_LATENCY", 0) >= 1:
+        action = Action(action_type="SCALE_SYSTEM")
+
+    # 2. Fix API only if stable DB
+    elif "API_TIMEOUT" in failures:
+        action = Action(action_type="RETRY_API")
+
+    # 3. Handle traffic smartly
+    elif "TRAFFIC_SPIKE" in failures and obs.latency > 0:
+        action = Action(action_type="PRIORITIZE_ORDERS")
+
+    # 4. ADD RIDER (LIMITED)
+    elif obs.available_riders == 0 and add_rider_count < 3 and obs.pending_orders > 2:
+        action = Action(action_type="ADD_RIDER")
+        add_rider_count += 1
+
+    # 🔥 5. ALWAYS DELIVER (CORE BOOST)
+    elif obs.pending_orders > 0 and obs.available_riders > 0:
+        action = Action(action_type="ASSIGN_RIDER")
+
+    # fallback
     else:
-
-        # Fix only major issues
-        if "DB_LATENCY" in failures:
-            action = Action(action_type="SCALE_SYSTEM")
-
-        elif "API_TIMEOUT" in failures:
-            action = Action(action_type="RETRY_API")
-
-        elif "TRAFFIC_SPIKE" in failures:
-            action = Action(action_type="PRIORITIZE_ORDERS")
-
-        # Add rider ONLY if none
-        elif obs.available_riders == 0:
-            action = Action(action_type="ADD_RIDER")
-
-        # Deliver remaining orders
-        elif obs.pending_orders > 3:
-            action = Action(action_type="ASSIGN_RIDER")
-
-        else:
-            action = Action(action_type="WAIT")
+        action = Action(action_type="WAIT")
 
     # STEP
     obs, reward, done, info = env.step(action)
