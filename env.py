@@ -1,159 +1,222 @@
+import random
 from models import Action, Observation
 from chaos_engine import ChaosEngine
 
 class BharatResilioEnv:
 
-    def __init__(self, task="medium"):
+    def __init__(self, task="sprinter"):
         self.task = task
-        self.chaos = ChaosEngine(level=task)
         self.reset()
 
     def reset(self):
 
-        if self.task == "easy":
-            orders = 2
-        elif self.task == "medium":
+        if self.task == "sprinter":
             orders = 5
-        else:
-            orders = 8
+            chaos_level = "easy"
 
-        self.state = {
+        elif self.task == "flaky_network":
+            orders = 10
+            chaos_level = "medium"
+
+        else:
+            orders = 20
+            chaos_level = "hard"
+
+        self.chaos = ChaosEngine(level=chaos_level)
+
+        self.state_data = {
             "pending_orders": orders,
             "available_riders": 3,
             "failures": [],
             "step_count": 0,
-
-            # system metrics
             "system_health": 1.0,
             "latency": 0,
             "throughput": 0,
-            "completed_orders": 0
+            "completed_orders": 0,
+            "budget": 10
         }
 
         self.last_action = None
-
         return self._get_obs()
 
+    def state(self):
+        return self.state_data
+
+    # -------------------------
+    # ACTIONS AVAILABLE
+    # -------------------------
+    def _get_available_actions(self):
+
+        actions = ["DIAGNOSE_SYSTEM", "WAIT"]
+
+        if self.state_data["available_riders"] > 0 and self.state_data["pending_orders"] > 0:
+            actions.append("ASSIGN_RIDER")
+
+        if self.state_data["available_riders"] == 0:
+            actions.append("ADD_RIDER")
+
+        if "API_TIMEOUT" in self.state_data["failures"]:
+            actions.append("RETRY_API")
+
+        if "DB_LATENCY" in self.state_data["failures"]:
+            actions.append("SCALE_SYSTEM")
+
+        if self.state_data["latency"] > 0:
+            actions.append("PRIORITIZE_ORDERS")
+
+        return actions
+
+    # -------------------------
+    # OBSERVATION (PARTIAL)
+    # -------------------------
     def _get_obs(self):
-        return Observation(
-            pending_orders=self.state["pending_orders"],
-            available_riders=self.state["available_riders"],
-            failures=self.state["failures"],
-            step_count=self.state["step_count"],
-            system_health=self.state["system_health"],
-            latency=self.state["latency"],
-            throughput=self.state["throughput"]
+
+        visible_failures = random.sample(
+            self.state_data["failures"],
+            k=min(2, len(self.state_data["failures"]))
         )
 
+        return Observation(
+            pending_orders=self.state_data["pending_orders"],
+            available_riders=self.state_data["available_riders"],
+            failures=visible_failures,
+            step_count=self.state_data["step_count"],
+            system_health=self.state_data["system_health"],
+            latency=self.state_data["latency"],
+            throughput=self.state_data["throughput"],
+            latency_ms=self.state_data["latency"] * 100,
+            socket_health_index=self.state_data["system_health"],
+            critical_failure=len(self.state_data["failures"]) > 2,
+            available_actions=self._get_available_actions()
+        )
+
+    # -------------------------
+    # STEP FUNCTION
+    # -------------------------
     def step(self, action: Action):
 
-        self.state["step_count"] += 1
+        self.state_data["step_count"] += 1
 
-        # Trigger chaos
+        # trigger chaos
         events = self.chaos.trigger()
-        self.state["failures"] = events
+
+        # ✅ LIMIT FAILURE GROWTH (CRITICAL FIX)
+        self.state_data["failures"] = list(
+            set(self.state_data["failures"]) | set(events)
+        )
+        if len(self.state_data["failures"]) > 4:
+            self.state_data["failures"] = self.state_data["failures"][:4]
 
         reward = 0
 
-        # =====================
-        # ACTIONS
-        # =====================
+        # -------------------------
+        # ACTION LOGIC
+        # -------------------------
 
-        if action.action_type == "ASSIGN_RIDER":
-            if self.state["available_riders"] > 0 and self.state["pending_orders"] > 0:
-                self.state["pending_orders"] -= 1
-                self.state["available_riders"] -= 1
-                self.state["completed_orders"] += 1
-                self.state["throughput"] += 1
-                reward += 2.0   # 🔥 STRONG DELIVERY REWARD
+        if action.action_type == "DIAGNOSE_SYSTEM":
+            reward += 0.3 if len(self.state_data["failures"]) > 0 else -0.05
+
+        elif action.action_type == "ASSIGN_RIDER":
+
+            if self.state_data["available_riders"] > 0 and self.state_data["pending_orders"] > 0:
+
+                if len(self.state_data["failures"]) >= 2:
+                    reward -= 1.0   # 🔥 reduced penalty
+                elif len(self.state_data["failures"]) == 1:
+                    reward += 1.0
+                else:
+                    reward += 2.5   # 🔥 slightly higher reward
+
+                self.state_data["pending_orders"] -= 1
+                self.state_data["available_riders"] -= 1
+                self.state_data["completed_orders"] += 1
+                self.state_data["throughput"] += 1
+
+            else:
+                reward -= 0.5
+
+        elif action.action_type == "ADD_RIDER":
+
+            if self.state_data["budget"] > 0:
+                self.state_data["available_riders"] += 1
+                self.state_data["budget"] -= 1
+                reward -= 0.2   # 🔥 less punishment
             else:
                 reward -= 1.0
 
-        elif action.action_type == "ADD_RIDER":
-            self.state["available_riders"] += 1
-            reward -= 0.2
-
         elif action.action_type == "RETRY_API":
-            if "API_TIMEOUT" in events:
-                reward += 0.5
+
+            if "API_TIMEOUT" in self.state_data["failures"] and "DB_LATENCY" not in self.state_data["failures"]:
+                self.state_data["failures"].remove("API_TIMEOUT")
+                reward += 0.8
             else:
-                reward -= 0.1
+                reward -= 0.05
 
         elif action.action_type == "SCALE_SYSTEM":
-            self.state["system_health"] += 0.1
-            reward -= 0.3
+
+            if "DB_LATENCY" in self.state_data["failures"]:
+                self.state_data["failures"].remove("DB_LATENCY")
+                reward += 0.8
+            else:
+                reward -= 0.05
+
+            self.state_data["system_health"] += 0.1
 
         elif action.action_type == "PRIORITIZE_ORDERS":
-            if self.state["pending_orders"] > 0:
-                self.state["latency"] = max(0, self.state["latency"] - 1)
-                reward += 0.02   # 🔥 REDUCED IMPACT
-            else:
-                reward -= 0.3
+            self.state_data["latency"] = max(0, self.state_data["latency"] - 1)
+            reward += 0.2
 
         elif action.action_type == "WAIT":
             reward -= 0.05
 
-        # =====================
+        # -------------------------
         # FAILURE EFFECTS
-        # =====================
+        # -------------------------
 
-        if "DB_LATENCY" in events:
-            self.state["latency"] += 2
-            self.state["system_health"] -= 0.2
-            reward -= 0.3
+        if "DB_LATENCY" in self.state_data["failures"]:
+            self.state_data["latency"] += 1   # 🔥 reduced impact
+            self.state_data["system_health"] -= 0.1
 
-        if "API_TIMEOUT" in events:
-            reward -= 0.2
+        if "RIDER_SHORTAGE" in self.state_data["failures"]:
+            self.state_data["available_riders"] = max(0, self.state_data["available_riders"] - 1)
 
-        if "RIDER_SHORTAGE" in events:
-            self.state["available_riders"] = max(0, self.state["available_riders"] - 1)
-            reward -= 0.3
+        if "TRAFFIC_SPIKE" in self.state_data["failures"]:
+            self.state_data["pending_orders"] += 1
 
-        if "RIDER_CANCELLED" in events:
-            reward -= 0.2
+        # -------------------------
+        # 🔥 AUTO RECOVERY (CRITICAL)
+        # -------------------------
 
-        if "TRAFFIC_SPIKE" in events:
-            self.state["pending_orders"] += 1
-            reward -= 0.2
+        if len(self.state_data["failures"]) > 2:
+            removed = random.choice(self.state_data["failures"])
+            self.state_data["failures"].remove(removed)
 
-        # =====================
-        # STATE SAFETY
-        # =====================
+        # -------------------------
+        # CLEAN REWARD
+        # -------------------------
 
-        self.state["pending_orders"] = max(0, self.state["pending_orders"])
-        self.state["system_health"] = max(0, min(1, self.state["system_health"]))
+        reward += (
+            + 1.5 * self.state_data["completed_orders"]
+            - 0.7 * len(self.state_data["failures"])
+            - 0.03 * self.state_data["latency"]
+        )
 
-        # =====================
-        # MULTI-OBJECTIVE REWARD
-        # =====================
-
-        reward += self.state["system_health"] * 0.2
-        reward -= self.state["latency"] * 0.05
-
-        # Encourage real work
-        reward += self.state["completed_orders"] * 0.1
-        reward += self.state["throughput"] * 0.05
-
-        # Penalize repetition
+        # repetition penalty
         if self.last_action == action.action_type:
-            reward -= 0.1
+            reward -= 0.03
 
         self.last_action = action.action_type
 
-        # 🔥 Penalize pending work
-        if self.state["pending_orders"] > 0:
-            reward -= 0.1 * self.state["pending_orders"]
+        # bounds
+        self.state_data["pending_orders"] = max(0, self.state_data["pending_orders"])
+        self.state_data["system_health"] = max(0, min(1, self.state_data["system_health"]))
 
-        # 🔥 Completion bonus
-        if self.state["pending_orders"] == 0:
-            reward += 5.0
+        # terminal
+        done = (
+            self.state_data["pending_orders"] == 0
+            or self.state_data["step_count"] >= 20
+        )
 
-        # Step penalty
-        reward -= 0.05
+        error_msg = "|".join(self.state_data["failures"]) if self.state_data["failures"] else None
 
-        done = self.state["pending_orders"] <= 0 or self.state["step_count"] >= 20
-
-        return self._get_obs(), reward, done, {}
-
-    def state(self):
-        return self.state
+        return self._get_obs(), reward, done, {"error": error_msg}

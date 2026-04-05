@@ -1,14 +1,26 @@
 name: bharatresilio
 version: 1.0
+description: Chaos-driven logistics RL environment
+
+observation_space:
+  pending_orders: int
+  available_riders: int
+  failures: list
+  system_health: float
+  latency: int
+
+action_space:
+  - ASSIGN_RIDER
+  - ADD_RIDER
+  - RETRY_API
+  - SCALE_SYSTEM
+  - PRIORITIZE_ORDERS
+  - DIAGNOSE_SYSTEM
+  - WAIT
 
 tasks:
-  - name: basic_recovery
-    difficulty: easy
+  - sprinter
+  - flaky_network
+  - bharat_storm
 
-  - name: multi_order
-    difficulty: medium
-
-  - name: chaos_survival
-    difficulty: hard
-
-reward_range: [-2.0, 2.0]
+reward_range: [-5.0, 10.0]

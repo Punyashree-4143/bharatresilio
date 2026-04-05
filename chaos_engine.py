@@ -8,14 +8,13 @@ class ChaosEngine:
     def trigger(self):
         events = []
 
-        # Root causes
         if random.random() < 0.3:
             events.append("DB_LATENCY")
 
         if random.random() < 0.2:
             events.append("RIDER_SHORTAGE")
 
-        # Cascading failures
+        # causal chain
         if "DB_LATENCY" in events:
             events.append("API_TIMEOUT")
 
@@ -25,4 +24,4 @@ class ChaosEngine:
         if random.random() < 0.2:
             events.append("TRAFFIC_SPIKE")
 
-        return events
+        return events  # ✅ FIXED (no comma)

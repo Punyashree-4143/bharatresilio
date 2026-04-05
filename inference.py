@@ -1,56 +1,67 @@
 from env import BharatResilioEnv
 from models import Action
+from graders import grade_bharat_storm
 
-env = BharatResilioEnv(task="medium")
+env = BharatResilioEnv(task="bharat_storm")
 obs = env.reset()
 
-print("[START] task=chaos_survival env=bharatresilio model=final-agent")
+print("[START] task=bharat_storm env=bharatresilio model=final-pass-agent")
 
 rewards = []
 steps = 0
-done = False
 
-for i in range(20):
+for step in range(20):
 
-    # 🔥 PRIORITY-BASED DECISION MAKING
+    failures = set(obs.failures)
 
-    # 1. Fix critical failures first
-    if "API_TIMEOUT" in obs.failures:
-        action = Action(action_type="RETRY_API")
+    # =========================
+    # 🔥 PHASE 1: EARLY DELIVERY (0–6 steps)
+    # =========================
+    if step < 6:
+        if obs.available_riders == 0:
+            action = Action(action_type="ADD_RIDER")
+        else:
+            action = Action(action_type="ASSIGN_RIDER")
 
-    elif "DB_LATENCY" in obs.failures:
-        action = Action(action_type="SCALE_SYSTEM")
-
-    # 2. Ensure resources
-    elif obs.available_riders == 0:
-        action = Action(action_type="ADD_RIDER")
-
-    # 3. MAIN GOAL: Deliver orders
-    elif obs.pending_orders > 0:
-        action = Action(action_type="ASSIGN_RIDER")
-
-    # 4. Optimization (only when no urgent work)
-    elif obs.latency > 2:
-        action = Action(action_type="PRIORITIZE_ORDERS")
-
+    # =========================
+    # 🔥 PHASE 2: CONTROL DAMAGE (6–20)
+    # =========================
     else:
-        action = Action(action_type="WAIT")
 
-    obs, reward, done, _ = env.step(action)
+        # Fix only major issues
+        if "DB_LATENCY" in failures:
+            action = Action(action_type="SCALE_SYSTEM")
 
-    reward_str = f"{reward:.2f}"
-    rewards.append(reward_str)
+        elif "API_TIMEOUT" in failures:
+            action = Action(action_type="RETRY_API")
+
+        elif "TRAFFIC_SPIKE" in failures:
+            action = Action(action_type="PRIORITIZE_ORDERS")
+
+        # Add rider ONLY if none
+        elif obs.available_riders == 0:
+            action = Action(action_type="ADD_RIDER")
+
+        # Deliver remaining orders
+        elif obs.pending_orders > 3:
+            action = Action(action_type="ASSIGN_RIDER")
+
+        else:
+            action = Action(action_type="WAIT")
+
+    # STEP
+    obs, reward, done, info = env.step(action)
+
+    rewards.append(f"{reward:.2f}")
     steps += 1
 
     print(
         f"[STEP] step={steps} action={action.action_type} "
-        f"reward={reward_str} done={str(done).lower()} error=null"
+        f"reward={reward:.2f} done={str(done).lower()} error={info.get('error')}"
     )
 
     if done:
         break
 
-print(
-    f"[END] success={str(done).lower()} "
-    f"steps={steps} rewards={','.join(rewards)}"
-)
+print(f"[END] steps={steps} rewards={','.join(rewards)}")
+print("Final Score:", grade_bharat_storm(env.state()))

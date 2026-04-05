@@ -10,7 +10,12 @@ class Observation(BaseModel):
     failures: List[str]
     step_count: int
 
-    # 🔥 New metrics
     system_health: float
     latency: int
     throughput: int
+
+    latency_ms: int
+    socket_health_index: float
+
+    critical_failure: bool
+    available_actions: List[str]
