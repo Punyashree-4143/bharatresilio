@@ -1,0 +1,14 @@
+name: bharatresilio
+version: 1.0
+
+tasks:
+  - name: basic_recovery
+    difficulty: easy
+
+  - name: multi_order
+    difficulty: medium
+
+  - name: chaos_survival
+    difficulty: hard
+
+reward_range: [-2.0, 2.0]
