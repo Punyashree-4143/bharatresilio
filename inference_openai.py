@@ -4,8 +4,16 @@ from env import BharatResilioEnv
 from models import Action
 from graders import grade_bharat_storm
 
-# 🔑 Load API key from environment
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# 🔑 REQUIRED ENV VARIABLES (STRICT CHECK)
+API_BASE_URL = os.getenv("API_BASE_URL")
+MODEL_NAME = os.getenv("MODEL_NAME")
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+# OpenAI client (NO default token)
+client = OpenAI(
+    base_url=API_BASE_URL,
+    api_key=HF_TOKEN
+)
 
 env = BharatResilioEnv(task="bharat_storm")
 obs = env.reset()
@@ -63,7 +71,7 @@ Respond with ONLY the action name.
 """
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=MODEL_NAME,  # ✅ from env
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )

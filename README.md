@@ -1,3 +1,12 @@
+---
+title: BharatResilio
+emoji: 🌩️
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_file: inference.py
+pinned: false
+---
 # 🌩️ BharatResilio: Hyperlocal Logistics Resilience Gym
 
 BharatResilio is a chaos-driven reinforcement learning environment designed to train AI agents in **logistics orchestration under unreliable infrastructure**.
