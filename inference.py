@@ -2,7 +2,7 @@ import os
 from openai import OpenAI
 from env import BharatResilioEnv
 from models import Action
-from graders import grade_bharat_storm
+from graders import grade_bharat_storm, grade_flaky_network, grade_sprinter
 
 # ----------------------------------
 # 🔑 REQUIRED ENV VARIABLES
@@ -116,11 +116,16 @@ for task in tasks:
             break
 
     # ----------------------------------
-    # 🏁 FINAL SCORE (STRICT SAFE RANGE)
+    # 🏁 FINAL SCORE (CORRECT GRADER PER TASK)
     # ----------------------------------
-    score = grade_bharat_storm(env.state())
+    if task == "bharat_storm":
+        score = grade_bharat_storm(env.state())
+    elif task == "bharat_flood":
+        score = grade_flaky_network(env.state())
+    elif task == "bharat_peak":
+        score = grade_sprinter(env.state())
 
-    # 🔥 HARD SAFETY (validator-proof)
+    # 🔥 HARD SAFETY (extra protection)
     score = max(0.2, min(0.8, float(score)))
 
     print(f"[END] steps={steps} rewards={','.join(rewards)}")
