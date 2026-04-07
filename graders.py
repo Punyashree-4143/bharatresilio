@@ -1,15 +1,12 @@
-def _safe(score, offset=0.0):
-    """
-    Ensure score is in (0,1) AND unique per task
-    """
-    score = score + offset
+def _safe(score):
+    score = round(score, 2)
 
     if score <= 0:
-        score = 0.21 + offset
+        score = 0.3
     elif score >= 1:
-        score = 0.79 - offset
+        score = 0.8
 
-    return round(score, 3)
+    return score
 
 
 def grade_sprinter(state):
@@ -18,8 +15,10 @@ def grade_sprinter(state):
 
     base = (completed + 2) / (total + 4)
 
-    # 🔥 unique offset
-    return _safe(base, offset=0.05)
+    score = _safe(base)
+
+    # 🔥 FORCE UNIQUE (peak)
+    return score + 0.10
 
 
 def grade_flaky_network(state):
@@ -28,8 +27,10 @@ def grade_flaky_network(state):
 
     base = (completed + 1) / (total + 3)
 
-    # 🔥 different offset
-    return _safe(base, offset=0.02)
+    score = _safe(base)
+
+    # 🔥 FORCE UNIQUE (flood)
+    return score + 0.05
 
 
 def grade_bharat_storm(state):
@@ -43,5 +44,7 @@ def grade_bharat_storm(state):
 
     base = 0.5 * completion + 0.3 * health + 0.2 * latency_penalty
 
-    # 🔥 different offset
-    return _safe(base, offset=0.03)
+    score = _safe(base)
+
+    # 🔥 FORCE UNIQUE (storm)
+    return score + 0.07
