@@ -68,7 +68,7 @@ class BharatResilioEnv:
             k=min(2, len(self.state_data["failures"]))
         )
 
-        # 2. ✅ FIXED: Added all required Pydantic fields to match Observation model
+        # 2. ✅ RETURN COMPLETE OBSERVATION (Fixes Pydantic ValidationError)
         return Observation(
             pending_orders=self.state_data["pending_orders"],
             available_riders=self.state_data["available_riders"],
@@ -79,7 +79,7 @@ class BharatResilioEnv:
             throughput=self.state_data["throughput"],
             available_actions=self._get_available_actions(),
             
-            # 🔥 CRITICAL FIXES FOR PYDANTIC VALIDATION:
+            # 🔥 REQUIRED FIELDS FOR VALIDATION
             latency_ms=int(self.state_data["latency"] * 100),
             socket_health_index=float(self.state_data["system_health"]),
             critical_failure=bool(len(self.state_data["failures"]) > 2)
@@ -102,7 +102,6 @@ class BharatResilioEnv:
         # --- Action Logic (Keeping your working code) ---
         if atype == "ASSIGN_RIDER":
             if self.state_data["available_riders"] > 0 and self.state_data["pending_orders"] > 0:
-                # Better reward for clean system
                 reward += 2.0 if not self.state_data["failures"] else 0.5
                 self.state_data["pending_orders"] -= 1
                 self.state_data["available_riders"] -= 1
@@ -143,8 +142,8 @@ class BharatResilioEnv:
         info = {"error": "|".join(self.state_data["failures"]) if self.state_data["failures"] else None}
         
         if done:
-            # Assign the final task score to info dictionary for OpenEnv Validator
             try:
+                # Assign the final task score using your existing graders
                 if self.task == "sprinter":
                     score = grade_sprinter(self.state_data)
                 elif self.task == "flaky_network":
@@ -152,10 +151,16 @@ class BharatResilioEnv:
                 else:
                     score = grade_bharat_storm(self.state_data)
                 
-                # Ensure float return (Safe against tuple returns)
-                info["score"] = float(score[0]) if isinstance(score, tuple) else float(score)
+                # ✅ FORCE (0, 1) FLOAT RANGE (Ensures Phase 2 compliance)
+                # First, extract if it's a tuple
+                raw_val = float(score[0]) if isinstance(score, tuple) else float(score)
+                
+                # Final clamp to stay strictly within (0, 1)
+                # This ensures we never hit exactly 0.0 or 1.0
+                info["score"] = max(0.01, min(0.99, raw_val))
+
             except Exception as e:
                 # Fallback to a safe middle score if grader fails
-                info["score"] = 0.5
+                info["score"] = 0.50
 
         return self._get_obs(), reward, done, info
