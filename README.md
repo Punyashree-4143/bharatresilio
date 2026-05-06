@@ -1,12 +1,4 @@
----
-title: BharatResilio
-emoji: 🌩️
-colorFrom: blue
-colorTo: purple
-sdk: docker
-app_file: inference.py
-pinned: false
----
+
 # 🌩️ BharatResilio: Hyperlocal Logistics Resilience Gym
 
 BharatResilio is a chaos-driven reinforcement learning environment designed to train AI agents in **logistics orchestration under unreliable infrastructure**.
@@ -124,11 +116,7 @@ Backend Simulation: Event-driven chaos engine
 RL Interface: Python-based OpenEnv wrapper
 State Tracking: Real-time system + logistics metrics
 
----
-### 👥 Developed by Team BharatResilio
-**Punyashree** | *Final Year MCA* | 📍 Bengaluru, India  
-**Nikhil** | *2nd Year Engineering* | 📍 Bengaluru, India  
 
-*A collaborative project focused on High-Availability Logistics and Reinforcement Learning Orchestration.*
+
 
 
